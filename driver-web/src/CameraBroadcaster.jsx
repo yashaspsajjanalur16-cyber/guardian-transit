@@ -1,15 +1,23 @@
 import { useEffect, useRef } from "react";
 
-const SIGNALING_SERVER = "wss://guardian-transit.onrender.com";
+const SIGNALING_SERVER =
+  "wss://guardian-transit.onrender.com";
 
 let driverSocket = null;
+
+// =====================================================
+// SEND DRIVER TELEMETRY
+// =====================================================
 
 export function sendDriverTelemetry(telemetry) {
   if (
     !driverSocket ||
     driverSocket.readyState !== WebSocket.OPEN
   ) {
-    console.log("⚠️ Telemetry socket not ready");
+    console.log(
+      "⚠️ Telemetry socket not ready"
+    );
+
     return false;
   }
 
@@ -17,96 +25,401 @@ export function sendDriverTelemetry(telemetry) {
     JSON.stringify({
       type: "DRIVER_TELEMETRY",
       ...telemetry,
-      timestamp: telemetry.timestamp || Date.now(),
+      timestamp:
+        telemetry.timestamp || Date.now(),
     })
   );
 
-  console.log("📡 Driver telemetry sent:", telemetry);
+  console.log(
+    "📡 Driver telemetry sent:",
+    telemetry
+  );
 
   return true;
 }
+
+// =====================================================
+// CAMERA BROADCASTER
+// =====================================================
 
 function CameraBroadcaster({ stream }) {
   const socketRef = useRef(null);
   const peerRef = useRef(null);
 
+  // Prevent multiple offers.
+  const offerSentRef = useRef(false);
+
+  // Prevent multiple connection attempts.
+  const connectingRef = useRef(false);
+
+  // Track whether the driver's remote description
+  // (Admin answer) has been received.
+  const remoteDescriptionReadyRef =
+    useRef(false);
+
+  // ICE candidates can arrive before the answer.
+  const pendingIceCandidatesRef =
+    useRef([]);
+
   useEffect(() => {
-    if (!stream) return;
+    if (!stream) {
+      return;
+    }
 
     let mounted = true;
 
-    const createOffer = async () => {
-      try {
-        if (!stream) return;
+    // ===================================================
+    // CLEANUP PEER
+    // ===================================================
 
-        if (peerRef.current) {
+    const cleanupPeer = () => {
+      remoteDescriptionReadyRef.current =
+        false;
+
+      pendingIceCandidatesRef.current = [];
+
+      if (peerRef.current) {
+        try {
+          peerRef.current.onicecandidate =
+            null;
+
+          peerRef.current.onconnectionstatechange =
+            null;
+
+          peerRef.current.oniceconnectionstatechange =
+            null;
+
           peerRef.current.close();
-          peerRef.current = null;
+        } catch {
+          // Ignore cleanup errors.
         }
 
-        const peer = new RTCPeerConnection({
-          iceServers: [
-            {
-              urls: "stun:stun.l.google.com:19302",
-            },
-          ],
-        });
+        peerRef.current = null;
+      }
+
+      connectingRef.current = false;
+      offerSentRef.current = false;
+    };
+
+    // ===================================================
+    // ADD QUEUED ICE CANDIDATES
+    // ===================================================
+
+    const flushPendingIceCandidates =
+      async (peer) => {
+        const candidates =
+          pendingIceCandidatesRef.current;
+
+        pendingIceCandidatesRef.current =
+          [];
+
+        if (!candidates.length) {
+          return;
+        }
+
+        console.log(
+          `🧊 Adding ${candidates.length} queued ICE candidate(s)`
+        );
+
+        for (const candidate of candidates) {
+          try {
+            await peer.addIceCandidate(
+              new RTCIceCandidate(candidate)
+            );
+
+            console.log(
+              "🧊 Queued ICE candidate added"
+            );
+          } catch (error) {
+            console.error(
+              "❌ Queued ICE candidate error:",
+              error
+            );
+          }
+        }
+      };
+
+    // ===================================================
+    // CREATE WEBRTC OFFER
+    // ===================================================
+
+    const createOffer = async () => {
+      try {
+        if (!mounted || !stream) {
+          return;
+        }
+
+        const socket =
+          socketRef.current;
+
+        if (
+          !socket ||
+          socket.readyState !==
+            WebSocket.OPEN
+        ) {
+          console.log(
+            "⚠️ Cannot create offer: socket not ready"
+          );
+
+          return;
+        }
+
+        // -----------------------------------------------
+        // PREVENT DUPLICATE OFFERS
+        // -----------------------------------------------
+
+        if (offerSentRef.current) {
+          console.log(
+            "⚠️ WebRTC offer already sent - ignoring duplicate ADMIN_READY"
+          );
+
+          return;
+        }
+
+        if (connectingRef.current) {
+          console.log(
+            "⚠️ WebRTC connection already being created"
+          );
+
+          return;
+        }
+
+        connectingRef.current = true;
+
+        console.log(
+          "🎥 Creating Driver WebRTC connection..."
+        );
+
+        // -----------------------------------------------
+        // CREATE PEER
+        // -----------------------------------------------
+
+        const peer =
+          new RTCPeerConnection({
+            iceServers: [
+              {
+                urls:
+                  "stun:stun.l.google.com:19302",
+              },
+            ],
+          });
 
         peerRef.current = peer;
 
-        stream.getTracks().forEach((track) => {
-          peer.addTrack(track, stream);
-        });
+        // -----------------------------------------------
+        // ADD CAMERA TRACKS
+        // -----------------------------------------------
 
-        peer.onicecandidate = (event) => {
-          if (
-            event.candidate &&
-            socketRef.current?.readyState ===
-              WebSocket.OPEN
-          ) {
-            socketRef.current.send(
+        stream
+          .getTracks()
+          .forEach((track) => {
+            console.log(
+              "🎥 Adding driver track:",
+              track.kind,
+              track.readyState
+            );
+
+            peer.addTrack(
+              track,
+              stream
+            );
+          });
+
+        // -----------------------------------------------
+        // SEND ICE CANDIDATES
+        // -----------------------------------------------
+
+        peer.onicecandidate =
+          (event) => {
+            if (
+              !event.candidate
+            ) {
+              return;
+            }
+
+            const currentSocket =
+              socketRef.current;
+
+            if (
+              !currentSocket ||
+              currentSocket.readyState !==
+                WebSocket.OPEN
+            ) {
+              console.warn(
+                "⚠️ Driver socket not ready for ICE candidate"
+              );
+
+              return;
+            }
+
+            currentSocket.send(
               JSON.stringify({
-                type: "ICE_CANDIDATE",
-                candidate: event.candidate,
-                vehicle: "BUS-101",
+                type:
+                  "ICE_CANDIDATE",
+                candidate:
+                  event.candidate,
+                vehicle:
+                  "BUS-101",
               })
             );
-          }
-        };
 
-        peer.onconnectionstatechange = () => {
-          console.log(
-            "🔗 Driver WebRTC state:",
-            peer.connectionState
-          );
-        };
+            console.log(
+              "📤 Driver ICE candidate sent"
+            );
+          };
 
-        const offer = await peer.createOffer();
+        // -----------------------------------------------
+        // ICE CONNECTION STATE
+        // -----------------------------------------------
 
-        await peer.setLocalDescription(offer);
+        peer.oniceconnectionstatechange =
+          () => {
+            console.log(
+              "🧊 Driver ICE state:",
+              peer.iceConnectionState
+            );
+
+            if (
+              peer.iceConnectionState ===
+                "connected" ||
+              peer.iceConnectionState ===
+                "completed"
+            ) {
+              console.log(
+                "✅ Driver ICE connection established"
+              );
+            }
+
+            if (
+              peer.iceConnectionState ===
+              "disconnected"
+            ) {
+              console.warn(
+                "⚠️ Driver ICE disconnected"
+              );
+            }
+
+            if (
+              peer.iceConnectionState ===
+              "failed"
+            ) {
+              console.error(
+                "❌ Driver ICE connection failed"
+              );
+            }
+          };
+
+        // -----------------------------------------------
+        // WEBRTC CONNECTION STATE
+        // -----------------------------------------------
+
+        peer.onconnectionstatechange =
+          () => {
+            console.log(
+              "🔗 Driver WebRTC state:",
+              peer.connectionState
+            );
+
+            if (
+              peer.connectionState ===
+              "connected"
+            ) {
+              console.log(
+                "✅ Driver WebRTC connected to Fleet"
+              );
+            }
+
+            if (
+              peer.connectionState ===
+              "failed"
+            ) {
+              console.error(
+                "❌ Driver WebRTC connection failed"
+              );
+
+              // Allow a future ADMIN_READY to create
+              // a new connection if necessary.
+              connectingRef.current =
+                false;
+              offerSentRef.current =
+                false;
+            }
+
+            if (
+              peer.connectionState ===
+              "closed"
+            ) {
+              connectingRef.current =
+                false;
+            }
+          };
+
+        // -----------------------------------------------
+        // CREATE OFFER
+        // -----------------------------------------------
+
+        const offer =
+          await peer.createOffer();
+
+        await peer.setLocalDescription(
+          offer
+        );
+
+        console.log(
+          "✅ Driver local description created"
+        );
+
+        // -----------------------------------------------
+        // SEND OFFER
+        // -----------------------------------------------
 
         if (
-          socketRef.current?.readyState ===
+          socket.readyState ===
           WebSocket.OPEN
         ) {
-          socketRef.current.send(
+          socket.send(
             JSON.stringify({
               type: "OFFER",
-              offer,
-              vehicle: "BUS-101",
-              driver: "Driver A",
+              offer:
+                peer.localDescription,
+              vehicle:
+                "BUS-101",
+              driver:
+                "Driver A",
             })
           );
 
-          console.log("📤 WebRTC offer sent");
+          offerSentRef.current =
+            true;
+
+          console.log(
+            "📤 WebRTC OFFER sent"
+          );
+        } else {
+          console.error(
+            "❌ Socket closed before OFFER could be sent"
+          );
+
+          connectingRef.current =
+            false;
         }
       } catch (error) {
         console.error(
           "❌ Offer creation error:",
           error
         );
+
+        connectingRef.current =
+          false;
+
+        offerSentRef.current =
+          false;
       }
     };
+
+    // ===================================================
+    // CONNECT TO SIGNALING SERVER
+    // ===================================================
 
     const connectToServer = () => {
       try {
@@ -114,15 +427,25 @@ function CameraBroadcaster({ stream }) {
           "🎥 Starting Driver Camera Broadcaster..."
         );
 
-        const socket = new WebSocket(
-          SIGNALING_SERVER
-        );
+        const socket =
+          new WebSocket(
+            SIGNALING_SERVER
+          );
 
-        socketRef.current = socket;
-        driverSocket = socket;
+        socketRef.current =
+          socket;
+
+        driverSocket =
+          socket;
+
+        // ===============================================
+        // SOCKET OPEN
+        // ===============================================
 
         socket.onopen = () => {
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
 
           console.log(
             "✅ Driver connected to signaling server"
@@ -130,123 +453,264 @@ function CameraBroadcaster({ stream }) {
 
           socket.send(
             JSON.stringify({
-              type: "DRIVER_READY",
-              vehicle: "BUS-101",
-              driver: "Driver A",
+              type:
+                "DRIVER_READY",
+              vehicle:
+                "BUS-101",
+              driver:
+                "Driver A",
             })
+          );
+
+          console.log(
+            "📤 DRIVER_READY sent"
           );
         };
 
-        socket.onmessage = async (event) => {
-          try {
-            const data = JSON.parse(event.data);
+        // ===============================================
+        // SOCKET MESSAGE
+        // ===============================================
 
-            console.log(
-              "📨 Driver received:",
-              data.type
-            );
-
-            // ADMIN READY
-            if (data.type === "ADMIN_READY") {
-              await createOffer();
+        socket.onmessage =
+          async (event) => {
+            if (!mounted) {
               return;
             }
 
-            // WEBRTC ANSWER
-            if (data.type === "ANSWER") {
-              if (!peerRef.current) {
+            try {
+              const data =
+                JSON.parse(
+                  event.data
+                );
+
+              console.log(
+                "📨 Driver received:",
+                data.type
+              );
+
+              // =========================================
+              // ADMIN READY
+              // =========================================
+
+              if (
+                data.type ===
+                "ADMIN_READY"
+              ) {
+                console.log(
+                  "🖥️ Admin is ready for Driver camera"
+                );
+
+                await createOffer();
+
                 return;
               }
 
-              await peerRef.current.setRemoteDescription(
-                new RTCSessionDescription(data.answer)
-              );
+              // =========================================
+              // WEBRTC ANSWER
+              // =========================================
 
-              console.log(
-                "✅ WebRTC answer received"
-              );
+              if (
+                data.type ===
+                "ANSWER"
+              ) {
+                const peer =
+                  peerRef.current;
 
-              return;
-            }
+                if (!peer) {
+                  console.warn(
+                    "⚠️ ANSWER received but no peer exists"
+                  );
 
-            // ICE CANDIDATE
-            if (
-              data.type === "ICE_CANDIDATE" &&
-              data.candidate &&
-              peerRef.current
-            ) {
-              try {
-                await peerRef.current.addIceCandidate(
-                  new RTCIceCandidate(data.candidate)
+                  return;
+                }
+
+                if (
+                  peer.signalingState !==
+                  "have-local-offer"
+                ) {
+                  console.warn(
+                    "⚠️ Ignoring ANSWER because signaling state is:",
+                    peer.signalingState
+                  );
+
+                  return;
+                }
+
+                await peer.setRemoteDescription(
+                  new RTCSessionDescription(
+                    data.answer
+                  )
                 );
 
                 console.log(
-                  "🧊 ICE candidate added"
+                  "✅ WebRTC ANSWER received"
                 );
-              } catch (error) {
-                console.error(
-                  "ICE candidate error:",
-                  error
+
+                remoteDescriptionReadyRef.current =
+                  true;
+
+                // -----------------------------------------
+                // ADD QUEUED ICE
+                // -----------------------------------------
+
+                await flushPendingIceCandidates(
+                  peer
                 );
+
+                console.log(
+                  "🧊 Driver queued ICE processing complete"
+                );
+
+                return;
               }
 
-              return;
+              // =========================================
+              // ICE CANDIDATE
+              // =========================================
+
+              if (
+                data.type ===
+                  "ICE_CANDIDATE" &&
+                data.candidate
+              ) {
+                const peer =
+                  peerRef.current;
+
+                if (!peer) {
+                  console.warn(
+                    "⚠️ Driver received ICE before peer exists"
+                  );
+
+                  return;
+                }
+
+                // -----------------------------------------
+                // QUEUE ICE UNTIL ANSWER EXISTS
+                // -----------------------------------------
+
+                if (
+                  !remoteDescriptionReadyRef.current
+                ) {
+                  console.log(
+                    "⏳ Queueing Driver ICE candidate until ANSWER is received"
+                  );
+
+                  pendingIceCandidatesRef.current.push(
+                    data.candidate
+                  );
+
+                  return;
+                }
+
+                // -----------------------------------------
+                // ADD ICE
+                // -----------------------------------------
+
+                try {
+                  await peer.addIceCandidate(
+                    new RTCIceCandidate(
+                      data.candidate
+                    )
+                  );
+
+                  console.log(
+                    "🧊 ICE candidate added"
+                  );
+                } catch (error) {
+                  console.error(
+                    "❌ ICE candidate error:",
+                    error
+                  );
+                }
+
+                return;
+              }
+
+              // =========================================
+              // AUDIO ALERT
+              // =========================================
+
+              if (
+                data.type ===
+                "AUDIO_ALERT"
+              ) {
+                console.log(
+                  "🔊 AUDIO ALERT received"
+                );
+
+                window.dispatchEvent(
+                  new CustomEvent(
+                    "guardianTransitAudioAlert",
+                    {
+                      detail:
+                        data,
+                    }
+                  )
+                );
+
+                return;
+              }
+
+              // =========================================
+              // REPLACE VEHICLE
+              // =========================================
+
+              if (
+                data.type ===
+                "REPLACE_VEHICLE"
+              ) {
+                console.log(
+                  "🚨 REPLACE VEHICLE received"
+                );
+
+                window.dispatchEvent(
+                  new CustomEvent(
+                    "guardianTransitReplaceVehicle",
+                    {
+                      detail:
+                        data,
+                    }
+                  )
+                );
+
+                return;
+              }
+            } catch (error) {
+              console.error(
+                "❌ Signaling message error:",
+                error
+              );
             }
+          };
 
-            // AUDIO ALERT
-            if (data.type === "AUDIO_ALERT") {
-              console.log(
-                "🔊 AUDIO ALERT received"
-              );
+        // ===============================================
+        // SOCKET ERROR
+        // ===============================================
 
-              window.dispatchEvent(
-                new CustomEvent(
-                  "guardianTransitAudioAlert",
-                  {
-                    detail: data,
-                  }
-                )
-              );
-
-              return;
-            }
-
-            // REPLACE VEHICLE
-            if (data.type === "REPLACE_VEHICLE") {
-              console.log(
-                "🚨 REPLACE VEHICLE received"
-              );
-
-              window.dispatchEvent(
-                new CustomEvent(
-                  "guardianTransitReplaceVehicle",
-                  {
-                    detail: data,
-                  }
-                )
-              );
-
-              return;
-            }
-          } catch (error) {
+        socket.onerror =
+          (error) => {
             console.error(
-              "❌ Signaling message error:",
+              "❌ Signaling server error:",
               error
             );
-          }
-        };
+          };
 
-        socket.onerror = (error) => {
-          console.error(
-            "❌ Signaling server error:",
-            error
-          );
-        };
+        // ===============================================
+        // SOCKET CLOSE
+        // ===============================================
 
         socket.onclose = () => {
           console.log(
             "🔌 Driver disconnected from signaling server"
           );
+
+          if (
+            driverSocket ===
+            socket
+          ) {
+            driverSocket =
+              null;
+          }
         };
       } catch (error) {
         console.error(
@@ -258,25 +722,39 @@ function CameraBroadcaster({ stream }) {
 
     connectToServer();
 
+    // ===================================================
+    // CLEANUP
+    // ===================================================
+
     return () => {
       mounted = false;
 
-      const currentSocket = socketRef.current;
+      console.log(
+        "🧹 Cleaning up Driver Camera Broadcaster"
+      );
 
-      if (peerRef.current) {
-        peerRef.current.close();
-        peerRef.current = null;
-      }
+      cleanupPeer();
+
+      const currentSocket =
+        socketRef.current;
 
       if (currentSocket) {
-        currentSocket.close();
+        try {
+          currentSocket.close();
+        } catch {
+          // Ignore cleanup errors.
+        }
       }
 
-      if (driverSocket === currentSocket) {
+      if (
+        driverSocket ===
+        currentSocket
+      ) {
         driverSocket = null;
       }
 
-      socketRef.current = null;
+      socketRef.current =
+        null;
     };
   }, [stream]);
 
