@@ -1,16 +1,18 @@
 import WebSocket, { WebSocketServer } from "ws";
 
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
+const HOST = "0.0.0.0";
 
 const wss = new WebSocketServer({
   port: PORT,
+  host: HOST,
 });
 
 const clients = new Set();
 
 console.log("=================================");
 console.log("GuardianTransit Signaling Server");
-console.log(`WebSocket server running on ws://localhost:${PORT}`);
+console.log(`WebSocket server running on port ${PORT}`);
 console.log("=================================");
 
 wss.on("connection", (socket) => {
@@ -71,10 +73,6 @@ wss.on("connection", (socket) => {
 
       if (type === "ADMIN_READY") {
         socket.role = "admin";
-
-        // Important:
-        // If Admin doesn't provide a vehicle,
-        // allow it to receive the whole fleet.
         socket.vehicle = data.vehicle || null;
 
         console.log(
@@ -85,16 +83,12 @@ wss.on("connection", (socket) => {
           }`
         );
 
-        // Tell matching drivers that an admin is ready
         clients.forEach((client) => {
           if (
             client !== socket &&
             client.readyState === WebSocket.OPEN &&
             client.role === "driver" &&
-            (
-              !socket.vehicle ||
-              client.vehicle === socket.vehicle
-            )
+            (!socket.vehicle || client.vehicle === socket.vehicle)
           ) {
             client.send(
               JSON.stringify({
@@ -176,9 +170,6 @@ wss.on("connection", (socket) => {
 
         let adminCount = 0;
 
-        // IMPORTANT:
-        // Send telemetry to ALL Admin sockets.
-        // FleetDashboard decides which vehicle to update.
         clients.forEach((client) => {
           if (
             client !== socket &&
@@ -270,10 +261,8 @@ wss.on("connection", (socket) => {
             client !== socket &&
             client.readyState === WebSocket.OPEN &&
             client.role === "admin" &&
-            (
-              !client.vehicle ||
-              client.vehicle === vehicle
-            )
+            (!client.vehicle ||
+              client.vehicle === vehicle)
           ) {
             client.send(
               JSON.stringify({
@@ -342,14 +331,10 @@ wss.on("connection", (socket) => {
           if (
             client !== socket &&
             client.readyState === WebSocket.OPEN &&
-            (
-              client.role === "driver" ||
-              client.role === "admin"
-            ) &&
-            (
-              !client.vehicle ||
-              client.vehicle === vehicle
-            )
+            (client.role === "driver" ||
+              client.role === "admin") &&
+            (!client.vehicle ||
+              client.vehicle === vehicle)
           ) {
             client.send(
               JSON.stringify({
@@ -372,6 +357,7 @@ wss.on("connection", (socket) => {
         "⚠️ Unknown message type:",
         data.type
       );
+
     } catch (error) {
       console.error(
         "❌ Message processing error:",
