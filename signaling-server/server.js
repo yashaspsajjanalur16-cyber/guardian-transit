@@ -390,6 +390,10 @@ wss.on("connection", (socket) => {
   });
 });
 
+// =========================
+// SERVER ERROR
+// =========================
+
 wss.on("error", (error) => {
   console.error(
     "❌ WebSocket server error:",
