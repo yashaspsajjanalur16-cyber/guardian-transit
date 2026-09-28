@@ -1,0 +1,1244 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap");
+
+/* =========================================================
+   GUARDIANTRANSIT — DRIVER COMMAND CONSOLE
+   ========================================================= */
+
+:root {
+  --bg: #071018;
+  --bg-soft: #0b151e;
+
+  --panel: #0e1a24;
+  --panel-2: #111f2a;
+  --panel-3: #142532;
+
+  --border: #213541;
+  --border-soft: #1a2c37;
+
+  --text: #edf5f7;
+  --text-soft: #a9bbc3;
+  --text-muted: #718691;
+
+  --teal: #18d4c5;
+  --teal-dark: #0c8f87;
+
+  --green: #37d48b;
+  --amber: #f4b740;
+  --red: #ff5364;
+  --blue: #5b9cff;
+
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+
+  --radius: 10px;
+}
+
+/* =========================================================
+   GLOBAL
+   ========================================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--bg);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(24, 212, 197, 0.055),
+      transparent 30%
+    ),
+    var(--bg);
+
+  color: var(--text);
+  font-family: "Inter", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.app {
+  min-height: 100vh;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.015),
+      transparent 160px
+    ),
+    var(--bg);
+}
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.app-header {
+  min-height: 72px;
+  padding: 0 28px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+
+  background: #08131c;
+  border-bottom: 1px solid var(--border);
+
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+}
+
+.app-header > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  min-width: 0;
+}
+
+.app-header h1 {
+  margin: 0;
+
+  color: #ffffff;
+
+  font-family: "Manrope", sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.app-header p {
+  margin: 4px 0 0;
+
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  flex-shrink: 0;
+
+  padding: 7px 11px;
+
+  border: 1px solid rgba(55, 212, 139, 0.25);
+  border-radius: 7px;
+
+  background: rgba(55, 212, 139, 0.06);
+
+  color: var(--green);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+  background: var(--green);
+
+  box-shadow:
+    0 0 0 3px rgba(55, 212, 139, 0.1),
+    0 0 12px rgba(55, 212, 139, 0.65);
+
+  animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* =========================================================
+   MAIN DASHBOARD
+   ========================================================= */
+
+.dashboard {
+  width: min(1400px, calc(100% - 40px));
+
+  margin: 0 auto;
+  padding: 24px 0 40px;
+
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/*
+   Important:
+   We do NOT force every dashboard child to span 12 columns.
+   This keeps the grid usable and prevents layout conflicts.
+*/
+
+.dashboard > * {
+  min-width: 0;
+}
+
+.card {
+  min-width: 0;
+
+  background: var(--panel);
+
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+
+  box-shadow: var(--shadow);
+
+  overflow: hidden;
+}
+
+/* Normal standalone dashboard sections */
+.dashboard > .card {
+  grid-column: 1 / -1;
+}
+
+/* Stats */
+.dashboard > .stats-grid {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+/* Face monitor */
+.dashboard > .face-monitor {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+/* =========================================================
+   CARD HEADER
+   ========================================================= */
+
+.card-header {
+  min-height: 52px;
+  padding: 13px 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  border-bottom: 1px solid var(--border-soft);
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.018),
+      transparent
+    );
+}
+
+.card-header h2,
+.card-header h3 {
+  margin: 0;
+
+  color: var(--text);
+
+  font-family: "Manrope", sans-serif;
+  font-weight: 800;
+}
+
+.card-header h2 {
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.card-header h3 {
+  font-size: 13px;
+}
+
+.card-header p {
+  margin: 3px 0 0;
+
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
+.primary-button,
+.secondary-button,
+.danger-button,
+.critical-button {
+  min-height: 38px;
+
+  padding: 9px 14px;
+
+  border-radius: 7px;
+
+  cursor: pointer;
+
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.primary-button {
+  border: 1px solid rgba(24, 212, 197, 0.35);
+  background: rgba(24, 212, 197, 0.12);
+
+  color: var(--teal);
+}
+
+.primary-button:hover {
+  background: rgba(24, 212, 197, 0.2);
+  border-color: rgba(24, 212, 197, 0.55);
+}
+
+.secondary-button {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+
+  color: var(--text-soft);
+}
+
+.secondary-button:hover {
+  border-color: #34505e;
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.danger-button,
+.critical-button {
+  border: 1px solid rgba(255, 83, 100, 0.35);
+  background: rgba(255, 83, 100, 0.1);
+
+  color: var(--red);
+}
+
+.danger-button:hover,
+.critical-button:hover {
+  background: rgba(255, 83, 100, 0.18);
+  border-color: rgba(255, 83, 100, 0.6);
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.danger-button:hover,
+.critical-button:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled,
+.critical-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* =========================================================
+   SOBRIETY
+   ========================================================= */
+
+.sobriety-card {
+  padding: 16px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(91, 156, 255, 0.055),
+      transparent 55%
+    ),
+    var(--panel);
+}
+
+.sobriety-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+
+  padding: 5px 9px;
+
+  border: 1px solid var(--border);
+  border-radius: 5px;
+
+  background: var(--panel-2);
+
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sobriety-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.sobriety-icon {
+  width: 42px;
+  height: 42px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border: 1px solid rgba(24, 212, 197, 0.2);
+  border-radius: 8px;
+
+  background: rgba(24, 212, 197, 0.08);
+
+  color: var(--teal);
+}
+
+.sobriety-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sobriety-info h3 {
+  margin: 0 0 4px;
+
+  font-family: "Manrope", sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.sobriety-info p {
+  margin: 0;
+
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.sobriety-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  flex-shrink: 0;
+}
+
+/* =========================================================
+   STATS
+   ========================================================= */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stat-card {
+  position: relative;
+
+  min-width: 0;
+  min-height: 105px;
+
+  padding: 14px;
+
+  background: var(--panel);
+
+  border: 1px solid var(--border);
+  border-radius: 8px;
+
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: "";
+
+  position: absolute;
+  inset: 0 auto 0 0;
+
+  width: 2px;
+
+  background: var(--border);
+}
+
+.stat-card.safe::before {
+  background: var(--green);
+}
+
+.stat-card.warning::before {
+  background: var(--amber);
+}
+
+.stat-card.danger::before {
+  background: var(--red);
+}
+
+.stat-card h3,
+.stat-card > span {
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  font-weight: 500;
+
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.stat-card strong {
+  display: block;
+
+  margin-top: 8px;
+
+  color: var(--text);
+
+  font-family: "Manrope", sans-serif;
+  font-size: 27px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.stat-card.safe strong {
+  color: var(--green);
+}
+
+.stat-card.warning strong {
+  color: var(--amber);
+}
+
+.stat-card.danger strong {
+  color: var(--red);
+}
+
+/* =========================================================
+   CAMERA
+   ========================================================= */
+
+.camera-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  width: 100%;
+  margin-bottom: 10px;
+
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.camera-container {
+  position: relative;
+
+  width: 100%;
+  height: 420px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+
+  background: #02070b;
+
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.driver-video {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  object-fit: cover;
+
+  background: #02070b;
+}
+
+/* CAMERA NOT ACTIVE / PLACEHOLDER */
+.camera-placeholder {
+  position: absolute;
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 10px;
+
+  padding: 20px;
+
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.camera-placeholder strong {
+  display: block;
+
+  margin: 0;
+
+  color: var(--text-soft);
+
+  font-family: "Manrope", sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.camera-placeholder svg {
+  width: 34px;
+  height: 34px;
+
+  color: var(--text-muted);
+}
+
+/* CAMERA ERROR */
+.camera-error {
+  width: 100%;
+
+  margin-top: 8px;
+  padding: 9px 11px;
+
+  border: 1px solid rgba(255, 83, 100, 0.25);
+  border-radius: 6px;
+
+  background: rgba(255, 83, 100, 0.07);
+
+  color: var(--red);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+
+/* CAMERA BUTTONS */
+.camera-actions {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 8px;
+
+  margin-top: 10px;
+}
+
+/* =========================================================
+   CAMERA — TABLET
+   ========================================================= */
+
+@media (max-width: 1000px) {
+  .camera-container {
+    height: 380px;
+  }
+}
+
+/* =========================================================
+   CAMERA — MOBILE
+   ========================================================= */
+
+@media (max-width: 680px) {
+  .camera-container {
+    height: 260px;
+  }
+
+  .driver-video {
+    width: 100%;
+    height: 100%;
+  }
+
+  .camera-placeholder {
+    inset: 0;
+
+    min-height: 0;
+
+    padding: 16px;
+  }
+}
+
+/* =========================================================
+   CAMERA — SMALL MOBILE
+   ========================================================= */
+
+@media (max-width: 430px) {
+  .camera-container {
+    height: 230px;
+  }
+
+  .camera-placeholder {
+    min-height: 0;
+  }
+
+  .camera-actions {
+    flex-direction: column;
+  }
+
+  .camera-actions button {
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   FACE MONITOR / MEDIAPIPE
+   ========================================================= */
+
+.face-monitor {
+  margin-top: 10px;
+
+  border: 1px solid var(--border);
+  border-radius: 8px;
+
+  background: var(--panel-2);
+
+  overflow: hidden;
+}
+
+.face-monitor-status {
+  min-height: 43px;
+  padding: 10px 12px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  border-bottom: 1px solid var(--border);
+
+  color: var(--text-soft);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.face-monitor-status > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.face-dot {
+  width: 7px;
+  height: 7px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: var(--text-muted);
+}
+
+.face-dot.active {
+  background: var(--green);
+
+  box-shadow:
+    0 0 0 3px rgba(55, 212, 139, 0.1),
+    0 0 10px rgba(55, 212, 139, 0.55);
+}
+
+.ai-label {
+  color: var(--teal);
+
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.face-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.face-result {
+  min-width: 0;
+
+  padding: 12px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  border-right: 1px solid var(--border);
+}
+
+.face-result:last-child {
+  border-right: none;
+}
+
+.face-result span {
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.face-result strong {
+  color: var(--text);
+
+  font-family: "Manrope", sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+
+  overflow-wrap: anywhere;
+}
+
+.face-error {
+  margin: 10px;
+  padding: 9px 10px;
+
+  border: 1px solid rgba(255, 83, 100, 0.25);
+  border-radius: 6px;
+
+  background: rgba(255, 83, 100, 0.07);
+
+  color: var(--red);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+
+/* =========================================================
+   DRIVER INFORMATION
+   ========================================================= */
+
+.driver-info-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.driver-info-grid > div {
+  min-width: 0;
+
+  padding: 12px;
+
+  background: var(--panel-2);
+
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.driver-info-grid span {
+  display: block;
+
+  margin-bottom: 5px;
+
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 8px;
+
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.driver-info-grid strong {
+  display: block;
+
+  color: var(--text);
+
+  font-family: "Manrope", sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+
+  overflow-wrap: anywhere;
+}
+
+/* =========================================================
+   CRITICAL ALERT
+   ========================================================= */
+
+.critical-alert {
+  position: fixed;
+
+  top: 14px;
+  left: 50%;
+
+  z-index: 9999;
+
+  width: min(720px, calc(100% - 24px));
+
+  transform: translateX(-50%);
+
+  padding: 13px 16px;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  border: 1px solid rgba(255, 83, 100, 0.6);
+  border-radius: 8px;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 83, 100, 0.2),
+      rgba(255, 83, 100, 0.08)
+    ),
+    #160c10;
+
+  color: #ffffff;
+
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(255, 83, 100, 0.12);
+
+  animation: criticalAlertIn 0.25s ease-out;
+}
+
+.critical-alert strong {
+  color: var(--red);
+
+  font-family: "Manrope", sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.critical-alert span {
+  color: #d7aeb3;
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+}
+
+@keyframes criticalAlertIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.app-footer {
+  width: min(1400px, calc(100% - 40px));
+
+  margin: 0 auto;
+  padding: 18px 0 28px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  border-top: 1px solid var(--border);
+
+  color: var(--text-muted);
+
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.app-footer strong {
+  color: var(--text-soft);
+}
+
+/* =========================================================
+   STATUS COLORS
+   ========================================================= */
+
+.safe {
+  color: var(--green) !important;
+}
+
+.warning {
+  color: var(--amber) !important;
+}
+
+.danger {
+  color: var(--red) !important;
+}
+
+.info {
+  color: var(--blue) !important;
+}
+
+/* =========================================================
+   SCROLLBARS
+   ========================================================= */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #29404c #08131c;
+}
+
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #08131c;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #29404c;
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #3b5664;
+}
+
+/* =========================================================
+   TABLET
+   ========================================================= */
+
+@media (max-width: 1000px) {
+  .dashboard {
+    width: min(100% - 28px, 900px);
+
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .dashboard > .card,
+  .dashboard > .stats-grid,
+  .dashboard > .face-monitor {
+    grid-column: 1 / -1;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .driver-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .camera-container {
+    height: 380px;
+  }
+}
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 680px) {
+  .app-header {
+    min-height: 64px;
+    padding: 12px 14px;
+  }
+
+  .app-header h1 {
+    font-size: 16px;
+  }
+
+  .app-header p {
+    font-size: 8px;
+  }
+
+  .system-status {
+    padding: 6px 8px;
+    font-size: 8px;
+  }
+
+  .dashboard {
+    width: calc(100% - 20px);
+
+    padding: 14px 0 28px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .card {
+    width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-card {
+    min-height: 92px;
+  }
+
+  .stat-card strong {
+    font-size: 23px;
+  }
+
+  .camera-container {
+    height: 260px;
+  }
+
+  .driver-video {
+    width: 100%;
+    height: 100%;
+  }
+
+  .camera-placeholder {
+    min-height: 260px;
+  }
+
+  .sobriety-content {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sobriety-actions {
+    width: 100%;
+  }
+
+  .sobriety-actions button {
+    flex: 1;
+  }
+
+  .driver-info-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .app-footer {
+    width: calc(100% - 20px);
+
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* =========================================================
+   SMALL MOBILE
+   ========================================================= */
+
+@media (max-width: 430px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .system-status {
+    align-self: stretch;
+    justify-content: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .face-results {
+    grid-template-columns: 1fr;
+  }
+
+  .face-result {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .face-result:last-child {
+    border-bottom: none;
+  }
+
+  .driver-info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .camera-actions {
+    flex-direction: column;
+  }
+
+  .camera-actions button {
+    width: 100%;
+  }
+
+  .camera-container {
+    height: 230px;
+  }
+
+  .camera-placeholder {
+    min-height: 230px;
+  }
+
+  .critical-alert {
+    top: 8px;
+    width: calc(100% - 16px);
+    padding: 11px 12px;
+  }
+}
+
+/* =========================================================
+   REDUCED MOTION
+   ========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

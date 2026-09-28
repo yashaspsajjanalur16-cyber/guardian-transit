@@ -1,0 +1,12 @@
+{
+  "name": "guardian-transit-signaling-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}

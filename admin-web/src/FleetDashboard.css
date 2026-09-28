@@ -1,0 +1,788 @@
+/* ============================================================
+   GUARDIANTRANSIT — FLEET COMMAND CENTER
+   Rewritten to match FleetDashboard.jsx exactly (all class names
+   and state modifiers below are taken directly from the component).
+
+   Design: dark control-room console.
+   Type:   Manrope (headings/numerals) + Inter (body) + IBM Plex Mono (data/ids)
+   Layout: .fleet-dashboard is a 12-col grid; top-level sections get a
+           grid-column span, so panels tile side-by-side instead of
+           stacking full-width — no JSX structure changes required.
+           Conditionally-rendered sections (fleet-message,
+           critical-evidence-panel) simply don't reserve a slot when
+           React doesn't render them, since placement uses spans, not
+           named grid-template-areas.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap');
+
+*{box-sizing:border-box}
+
+:root{
+  --bg:         #0a0d13;
+  --panel:      #12161f;
+  --panel-2:    #181d29;
+  --panel-3:    #1e2432;
+  --line:       #262e3d;
+  --line-2:     #1c2230;
+  --ink:        #eef1f7;
+  --ink-soft:   #b7bfcf;
+  --mute:       #7c869a;
+  --mute-2:     #545e70;
+
+  --brand:      #3fd6c2;
+  --brand-soft: #123832;
+  --brand-line: #1c5b52;
+  --brand-ink:  #9ff2e4;
+
+  --ok:         #4ade80;
+  --ok-soft:    #123322;
+  --ok-line:    #1d4a34;
+  --warn:       #f3b74f;
+  --warn-soft:  #362a10;
+  --warn-line:  #513c15;
+  --crit:       #f16a72;
+  --crit-soft:  #3a1418;
+  --crit-line:  #552429;
+  --info:       #7fa8f5;
+  --info-soft:  #17233c;
+  --info-line:  #2a3c66;
+  --signal:     #b18cff;
+  --signal-soft:#241a3d;
+  --signal-line:#3d2e66;
+
+  --radius:     10px;
+  --radius-lg:  14px;
+  --shadow:     0 12px 28px -14px rgba(0,0,0,.55);
+  --gutter:     clamp(16px,4vw,42px);
+}
+
+html,body,#root{min-height:100%;margin:0}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:'Inter',ui-sans-serif,system-ui,-apple-system,sans-serif;
+  font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:'Manrope',ui-sans-serif,sans-serif;margin:0}
+button{font:inherit}
+::selection{background:var(--brand-soft);color:var(--brand-ink)}
+
+/* ============================================================
+   PAGE GRID
+   ============================================================ */
+.fleet-dashboard{
+  min-height:100vh;background:var(--bg);
+  display:grid;grid-template-columns:repeat(12,1fr);
+  gap:16px;
+  padding:0 var(--gutter) 40px;
+}
+
+/* ---------------- Header (full-bleed, sticky) ---------------- */
+.fleet-header{
+  grid-column:1/-1;
+  margin-inline:calc(-1 * var(--gutter));
+  padding:0 var(--gutter);
+  min-height:64px;display:flex;align-items:center;justify-content:space-between;
+  background:#05070b;border-bottom:1px solid var(--line-2);
+  position:sticky;top:0;z-index:1000;
+}
+.fleet-header h1{
+  font-size:16px;font-weight:800;letter-spacing:.03em;color:var(--ink);
+}
+.fleet-header h1::before{
+  content:"";display:inline-block;width:9px;height:9px;border-radius:3px;
+  margin-right:9px;background:linear-gradient(155deg,var(--brand),#1f9585);
+  vertical-align:middle;
+}
+.fleet-header p{margin:3px 0 0 18px;color:var(--mute);font-size:10.5px;font-weight:500}
+.system-status{display:flex;align-items:center;gap:8px;color:var(--ok);font-size:10.5px;font-weight:700;letter-spacing:.04em}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px rgba(74,222,128,.16)}
+
+/* ---------------- Notifications (fixed, outside grid flow) ---------------- */
+.notification-stack{
+  position:fixed;top:78px;right:18px;z-index:3000;
+  width:min(300px,calc(100% - 36px));display:grid;gap:8px;
+}
+.live-notification{
+  display:grid;grid-template-columns:auto 1fr;gap:10px;padding:11px;border-radius:10px;
+  background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);
+  animation:slide-in .3s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes slide-in{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+.live-notification.critical{border-left:3px solid var(--crit)}
+.live-notification.warning{border-left:3px solid var(--warn)}
+.live-notification.info{border-left:3px solid var(--info)}
+.notification-icon{width:26px;height:26px;border-radius:7px;background:var(--panel-2);display:grid;place-items:center;font-size:13px}
+.notification-content strong{display:block;font-size:9.5px;font-weight:700}
+.notification-content span{display:block;margin-top:3px;color:var(--mute);font-size:9.5px}
+.notification-content small{display:block;margin-top:5px;color:var(--mute-2);font-size:8px}
+
+/* ---------------- Message banner ---------------- */
+.fleet-message{
+  grid-column:1/-1;margin-top:16px;padding:11px 15px;border-radius:9px;
+  background:var(--signal-soft);border:1px solid var(--signal-line);color:#d9ccff;
+  font-size:11.5px;font-weight:600;
+}
+
+/* ============================================================
+   STATS
+   ============================================================ */
+.fleet-stats{
+  grid-column:1/-1;margin-top:20px;
+  display:grid;grid-template-columns:repeat(4,1fr);
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);
+  overflow:hidden;box-shadow:var(--shadow);
+}
+.stat-card{
+  min-height:86px;padding:16px 22px;display:flex;flex-direction:column;justify-content:center;
+  border-right:1px solid var(--line-2);background:var(--panel);
+}
+.stat-card:last-child{border-right:0}
+.stat-card span{color:var(--mute);font-size:9.5px;font-weight:700;letter-spacing:.05em}
+.stat-card strong{margin-top:7px;font-size:27px;line-height:1;font-weight:800;font-family:'Manrope';color:var(--ok)}
+.warning-stat strong{color:var(--warn)}
+.critical-stat strong{color:var(--crit)}
+
+/* ============================================================
+   ANALYTICS SECTION
+   ============================================================ */
+.analytics-section{grid-column:1/-1;margin-top:28px}
+.analytics-header{display:flex;align-items:flex-end;justify-content:space-between;gap:14px}
+.analytics-header h2{font-size:15.5px;font-weight:700}
+.analytics-header p{margin:4px 0 0;color:var(--mute);font-size:11px}
+.analytics-live{
+  padding:5px 10px;border-radius:6px;background:var(--ok-soft);color:var(--ok);
+  font-size:10px;font-weight:700;border:1px solid var(--ok-line);
+}
+
+.analytics-grid{
+  display:grid;grid-template-columns:repeat(7,1fr);margin-top:13px;gap:8px;
+}
+.analytics-card{
+  min-height:104px;padding:13px 12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:9px;box-shadow:var(--shadow);
+}
+.analytics-card.active{border-color:var(--ok-line);background:linear-gradient(160deg,var(--panel),var(--ok-soft) 220%)}
+.analytics-card.warning{border-color:var(--warn-line);background:linear-gradient(160deg,var(--panel),var(--warn-soft) 220%)}
+.analytics-card.critical{border-color:var(--crit-line);background:linear-gradient(160deg,var(--panel),var(--crit-soft) 220%)}
+.analytics-card-top{display:flex;align-items:center;justify-content:space-between}
+.analytics-icon{
+  width:24px;height:24px;display:grid;place-items:center;border-radius:7px;
+  background:var(--panel-3);border:1px solid var(--line);font-size:12px;
+}
+.analytics-card-top span:last-child{color:var(--mute);font-size:8.5px;font-weight:700;letter-spacing:.04em}
+.analytics-number{display:block;margin-top:13px;font-size:21px;line-height:1;font-weight:800;font-family:'Manrope'}
+.analytics-card small{display:block;margin-top:6px;color:var(--mute);font-size:9px;line-height:1.4}
+
+.analytics-distribution{
+  margin-top:12px;padding:13px 16px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius);box-shadow:var(--shadow);
+}
+.distribution-header{display:flex;justify-content:space-between;color:var(--mute);font-size:10px}
+.distribution-header strong{color:var(--ink-soft);font-weight:650;font-size:10.5px}
+.distribution-bar{height:7px;display:flex;overflow:hidden;margin:9px 0;border-radius:999px;background:var(--panel-3)}
+.distribution-active{background:var(--ok)}
+.distribution-warning{background:var(--warn)}
+.distribution-critical{background:var(--crit)}
+.distribution-legend{display:flex;justify-content:space-between;color:var(--mute);font-size:9.5px}
+.legend-dot{display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;font-style:normal}
+.legend-dot.active{background:var(--ok)}
+.legend-dot.warning{background:var(--warn)}
+.legend-dot.critical{background:var(--crit)}
+
+/* ============================================================
+   SHARED PANEL SURFACE  (.fleet-panel)
+   Used (combined with a 2nd class) by: predictive-panel,
+   live-driver-status, intervention-panel, incident-panel,
+   map-panel, and the plain vehicle-list panel.
+   ============================================================ */
+.fleet-panel{
+  padding:18px 20px;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow);min-width:0;
+}
+.fleet-panel .panel-header,
+.fleet-panel > .panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.panel-header h2{font-size:14px;font-weight:700}
+.panel-header p{margin:3px 0 0;color:var(--mute);font-size:10.5px}
+.live-badge{
+  padding:5px 10px;border-radius:6px;background:var(--ok-soft);color:var(--ok);
+  font-size:9.5px;font-weight:700;border:1px solid var(--ok-line);display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+}
+.live-badge::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--ok)}
+.critical-badge{
+  padding:5px 10px;border-radius:6px;background:var(--crit-soft);color:var(--crit);
+  font-size:9.5px;font-weight:700;border:1px solid var(--crit-line);white-space:nowrap;
+}
+
+/* ---------------- Predictive AI panel ---------------- */
+.fleet-panel.predictive-panel{grid-column:1/-1;margin-top:22px}
+.predictive-panel h2::before{
+  content:"";display:inline-block;width:7px;height:7px;border-radius:2px;background:var(--signal);margin-right:8px;
+}
+.simulation-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.simulation-button{
+  min-height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--line);
+  cursor:pointer;font-size:10.5px;font-weight:700;background:var(--panel-2);color:var(--ink-soft);
+}
+.simulation-button.start{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
+.simulation-button.stop{background:var(--crit-soft);color:var(--crit);border-color:var(--crit-line)}
+.simulation-status{font-size:9.5px;font-weight:700;letter-spacing:.03em}
+.simulation-status.running{color:var(--ok)}
+.simulation-status.stopped{color:var(--mute)}
+
+.prediction-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:14px}
+.prediction-card{padding:14px 15px;background:var(--panel-2);border:1px solid var(--line);border-radius:9px}
+.prediction-card.active{border-color:var(--ok-line)}
+.prediction-card.warning{border-color:var(--warn-line)}
+.prediction-card.critical{border-color:var(--crit-line)}
+.prediction-card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.prediction-card-top strong{font-size:11px;font-weight:700}
+.prediction-main{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
+.prediction-main span{display:block;color:var(--mute);font-size:8.5px;font-weight:650;text-transform:uppercase;letter-spacing:.03em}
+.prediction-main strong{display:block;margin-top:4px;font-size:16px;font-weight:800;font-family:'Manrope'}
+.prediction-arrow{color:var(--mute-2);font-size:15px}
+.prediction-trend{display:flex;justify-content:space-between;margin-top:11px;padding-top:10px;border-top:1px solid var(--line-2);color:var(--mute);font-size:9px}
+.prediction-trend strong{color:var(--ink-soft);font-size:10px;font-weight:650}
+.prediction-card>small{display:block;margin-top:9px;color:var(--mute);font-size:9px;line-height:1.4}
+
+/* ---------------- Status pill, reused across vehicles/predictions/drivers ---------------- */
+.vehicle-status{
+  display:inline-flex!important;align-items:center;gap:5px;
+  padding:4px 9px!important;margin:0!important;border-radius:999px!important;
+  font-size:8.5px!important;font-weight:800!important;letter-spacing:.03em;white-space:nowrap;
+}
+.vehicle-status::before{content:"";width:5px;height:5px;border-radius:50%;flex:none}
+.vehicle-status.active{background:var(--ok-soft);color:var(--ok)}
+.vehicle-status.active::before{background:var(--ok)}
+.vehicle-status.warning{background:var(--warn-soft);color:var(--warn)}
+.vehicle-status.warning::before{background:var(--warn)}
+.vehicle-status.critical{background:var(--crit-soft);color:var(--crit)}
+.vehicle-status.critical::before{background:var(--crit)}
+
+/* ============================================================
+   DRIVER PERFORMANCE
+   ============================================================ */
+.driver-performance-section{grid-column:1/-1;margin-top:28px}
+.driver-performance-section .analytics-header h2{font-size:15.5px}
+
+.driver-performance-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:13px}
+.driver-performance-card{
+  display:block;width:100%;text-align:left;cursor:pointer;
+  padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);color:var(--ink);transition:border-color .15s;
+}
+.driver-performance-card:hover{border-color:var(--mute-2)}
+.driver-performance-card.selected{border-color:var(--brand);background:var(--brand-soft)}
+.driver-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.driver-card-header strong{display:block;font-size:11.5px;font-weight:700}
+.driver-card-header span{display:block;margin-top:3px;color:var(--mute);font-size:9.5px;font-family:'IBM Plex Mono'}
+
+.driver-score{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+.driver-score>div span{display:block;color:var(--mute);font-size:8.5px;font-weight:650;letter-spacing:.03em}
+.driver-score>div strong{display:block;margin-top:4px;font-size:17px;font-weight:800;font-family:'Manrope'}
+.driver-score>span{padding:4px 9px;border-radius:999px;background:var(--panel-2);color:var(--ink-soft);font-size:8.5px;font-weight:700}
+.driver-score-bar{height:5px;margin-top:9px;overflow:hidden;border-radius:999px;background:var(--panel-3)}
+.driver-score-bar>div{height:100%;border-radius:inherit;background:var(--ok)}
+
+.driver-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+.driver-metrics>div{padding-top:8px;border-top:1px solid var(--line-2);text-align:center}
+.driver-metrics span{display:block;font-size:12px}
+.driver-metrics strong{display:block;margin-top:4px;font-size:11px;font-weight:700}
+.driver-metrics small{display:block;margin-top:2px;color:var(--mute-2);font-size:8px}
+
+.driver-trend{display:flex;justify-content:space-between;margin-top:11px;padding-top:10px;border-top:1px solid var(--line-2);color:var(--mute);font-size:9px}
+.driver-trend strong{color:var(--ink-soft);font-size:10px;font-weight:650}
+
+/* ---------------- Selected driver detail ---------------- */
+.selected-driver-performance{
+  margin-top:13px;padding:17px 19px;background:var(--brand-soft);
+  border:1px solid var(--brand-line);border-radius:var(--radius-lg);
+}
+.selected-driver-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.selected-driver-header span{display:block;color:var(--brand-ink);opacity:.8;font-size:9px;font-weight:700;letter-spacing:.04em}
+.selected-driver-header h3{margin:6px 0 0;font-size:13px;color:var(--ink)}
+.selected-driver-score{text-align:right}
+.selected-driver-score strong{display:block;margin-top:4px;font-size:20px;font-weight:800;color:var(--brand);font-family:'Manrope'}
+.selected-driver-metrics{display:grid;grid-template-columns:repeat(5,1fr);margin-top:14px;gap:8px}
+.selected-driver-metrics>div{padding-left:10px;border-left:1px solid var(--brand-line)}
+.selected-driver-metrics span{display:block;color:var(--brand-ink);opacity:.75;font-size:8.5px;font-weight:650}
+.selected-driver-metrics strong{display:block;margin-top:5px;font-size:11px}
+
+.driver-risk-history{margin-top:14px;padding-top:13px;border-top:1px solid var(--brand-line)}
+.history-header{display:flex;justify-content:space-between;color:var(--brand-ink);opacity:.85;font-size:9.5px}
+.history-header strong{font-weight:700;opacity:1;color:var(--ink)}
+.history-chart{height:70px;display:flex;align-items:flex-end;gap:6px;margin-top:10px}
+.history-bar-wrapper{height:100%;flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}
+.history-bar{width:100%;min-height:6px;border-radius:3px 3px 0 0;background:var(--ok);position:relative}
+.history-bar.warning{background:var(--warn)}
+.history-bar.critical{background:var(--crit)}
+.history-bar span{
+  position:absolute;top:-16px;left:50%;transform:translateX(-50%);
+  font-size:7.5px;color:var(--mute);font-family:'IBM Plex Mono';white-space:nowrap;
+}
+.history-bar-wrapper small{margin-top:5px;color:var(--mute-2);font-size:7.5px}
+.history-thresholds{display:flex;justify-content:space-between;margin-top:9px;color:var(--brand-ink);opacity:.8;font-size:8.5px}
+
+/* ============================================================
+   MAIN GRID: vehicle list + map
+   ============================================================ */
+.fleet-main-grid{
+  grid-column:1/-1;margin-top:28px;
+  display:grid;grid-template-columns:minmax(300px,.82fr) minmax(0,1.18fr);gap:14px;
+}
+.fleet-main-grid .fleet-panel h2{font-size:14.5px}
+
+.vehicle-list{display:grid;gap:8px;margin-top:13px;max-height:600px;overflow-y:auto;padding-right:2px}
+.vehicle-card{
+  display:block;width:100%;text-align:left;cursor:pointer;
+  padding:12px;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:9px;
+  transition:border-color .15s,background .15s;
+}
+.vehicle-card:hover{border-color:var(--mute-2)}
+.vehicle-card.selected{border-color:var(--brand);background:var(--brand-soft)}
+.vehicle-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.vehicle-top strong{display:block;font-size:11.5px;font-weight:700}
+.vehicle-top>div>span{display:block;margin-top:3px;color:var(--mute);font-size:9.5px}
+.vehicle-location{margin-top:9px;color:var(--mute);font-size:9.5px}
+.risk-row{display:flex;justify-content:space-between;margin-top:9px;color:var(--mute);font-size:9.5px}
+.risk-row strong{color:var(--ink-soft);font-size:10.5px;font-family:'IBM Plex Mono'}
+.risk-bar{height:5px;margin-top:6px;overflow:hidden;border-radius:999px;background:var(--panel-3)}
+.risk-bar>div{height:100%;border-radius:inherit;background:var(--ok)}
+.replacement-required{margin-top:8px;padding:7px 8px;background:var(--crit-soft);border:1px solid var(--crit-line);border-radius:6px;color:var(--crit);font-size:9.5px;font-weight:700}
+
+/* ---------------- Map ---------------- */
+.map-panel .leaflet-container{
+  width:100%;height:330px;min-height:330px;margin-top:13px;
+  border:1px solid var(--line);border-radius:10px;background:var(--panel-2);
+}
+.map-panel .leaflet-control-zoom a{background:var(--panel);color:var(--ink);border-color:var(--line)}
+.map-panel .leaflet-control-attribution{background:rgba(10,13,19,.82);color:var(--mute)}
+
+/* ============================================================
+   VEHICLE DETAIL PANEL
+   ============================================================ */
+.vehicle-detail-panel{
+  grid-column:span 5;margin-top:14px;padding:18px 20px;
+  display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow);
+}
+.detail-header{display:flex;flex-direction:column;gap:6px}
+.detail-header{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:10px;grid-column:1/-1}
+.detail-label{color:var(--mute);font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.detail-header h2{margin:6px 0 0;font-size:19px;font-weight:800}
+.vehicle-detail-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.detail-item{padding-top:10px;border-top:1px solid var(--line-2)}
+.detail-item span{display:block;color:var(--mute);font-size:8.5px;font-weight:650;letter-spacing:.03em}
+.detail-item strong{display:block;margin-top:5px;font-size:11.5px;font-weight:700}
+
+/* ============================================================
+   LIVE DRIVER AI STATUS
+   ============================================================ */
+.fleet-panel.live-driver-status{grid-column:span 7;margin-top:14px}
+.ai-status-grid{display:grid;grid-template-columns:repeat(7,1fr);margin-top:14px;gap:8px}
+.ai-status-item{padding:11px 9px;background:var(--panel-2);border:1px solid var(--line);border-radius:8px}
+.ai-status-item span{display:block;color:var(--mute);font-size:8px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.ai-status-item strong{display:block;margin-top:5px;font-size:10px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ============================================================
+   EVIDENCE / DRIVER CAMERA
+   Base .evidence-panel is used for both the always-on camera
+   section and (combined with .critical-evidence-panel) the
+   conditional incident-review section.
+   ============================================================ */
+.evidence-panel{
+  grid-column:span 5;margin-top:14px;padding:18px 20px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow);
+}
+.evidence-panel.critical-evidence-panel{
+  grid-column:1/-1;background:#160f10;border-color:var(--crit-line);
+}
+.driver-camera-info{margin:12px 0 0;color:var(--mute);font-size:9.5px;line-height:1.5}
+.driver-camera-info strong{display:block;margin-bottom:4px;color:var(--ink-soft);font-size:10.5px}
+
+.incident-evidence-info{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}
+.evidence-info-card{padding:9px;background:var(--panel-2);border:1px solid var(--line);border-radius:7px}
+.evidence-info-card span{display:block;color:var(--mute);font-size:8px;font-weight:700;letter-spacing:.02em}
+.evidence-info-card strong{display:block;margin-top:5px;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.close-evidence-button{
+  display:block;margin-top:12px;min-height:32px;padding:0 14px;border-radius:8px;
+  border:1px solid var(--line);background:var(--panel-2);color:var(--ink-soft);
+  font-size:10px;font-weight:700;cursor:pointer;
+}
+.close-evidence-button:hover{border-color:var(--mute-2)}
+
+/* ============================================================
+   INTERVENTION
+   ============================================================ */
+.fleet-panel.intervention-panel{grid-column:span 7;margin-top:14px}
+.intervention-buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px}
+.action-button{
+  display:block;min-height:38px;padding:0 10px;border-radius:8px;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--ink-soft);font-size:9.5px;font-weight:700;cursor:pointer;
+  transition:filter .15s,border-color .15s;
+}
+.action-button:hover{filter:brightness(1.15)}
+.action-button:active{transform:translateY(1px)}
+.audio-button{background:var(--brand-soft);color:var(--brand-ink);border-color:var(--brand-line)}
+.replace-button{background:var(--crit-soft);color:var(--crit);border-color:var(--crit-line)}
+.simulate-button{background:var(--signal-soft);color:#cbb8ff;border-color:var(--signal-line)}
+.incident-button{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+
+/* ============================================================
+   INCIDENT LOG
+   ============================================================ */
+.fleet-panel.incident-panel{grid-column:1/-1;margin-top:14px}
+.incident-list{margin-top:13px;border-top:1px solid var(--line-2)}
+.incident-item{display:grid;grid-template-columns:auto 1fr auto;gap:11px;align-items:center;padding:11px 2px;border-bottom:1px solid var(--line-2)}
+.incident-icon{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;background:var(--panel-2);font-size:13px}
+.incident-item.critical .incident-icon{background:var(--crit-soft)}
+.incident-item.warning .incident-icon{background:var(--warn-soft)}
+.incident-item.info .incident-icon{background:var(--info-soft)}
+.incident-content strong{display:block;font-size:10.5px;font-weight:700}
+.incident-content span{display:block;margin-top:3px;color:var(--mute);font-size:9.5px}
+.incident-item time{color:var(--mute-2);font-size:8.5px;font-family:'IBM Plex Mono'}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.fleet-footer{
+  grid-column:1/-1;margin-top:26px;padding-top:16px;border-top:1px solid var(--line-2);
+  display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;color:var(--mute);font-size:9.5px;
+}
+
+/* ============================================================
+   ACCESSIBILITY & MOTION
+   ============================================================ */
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.live-notification{animation:none}}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media(max-width:1150px){
+  .analytics-grid{grid-template-columns:repeat(4,1fr)}
+  .vehicle-detail-panel,
+  .fleet-panel.live-driver-status,
+  .evidence-panel:not(.critical-evidence-panel),
+  .fleet-panel.intervention-panel{grid-column:1/-1}
+  .fleet-main-grid{grid-template-columns:1fr}
+  .vehicle-detail-grid{grid-template-columns:repeat(2,1fr)}
+  .ai-status-grid{grid-template-columns:repeat(4,1fr)}
+  .driver-performance-grid,.prediction-grid{grid-template-columns:1fr 1fr}
+  .intervention-buttons{grid-template-columns:1fr 1fr}
+  .incident-evidence-info{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:720px){
+  :root{--gutter:16px}
+  .fleet-header h1{font-size:14px}
+  .fleet-stats{grid-template-columns:1fr 1fr}
+  .stat-card:nth-child(2){border-right:0}
+  .analytics-grid{grid-template-columns:1fr 1fr}
+  .driver-performance-grid,.prediction-grid,.ai-status-grid{grid-template-columns:1fr 1fr}
+  .vehicle-detail-grid,.selected-driver-metrics{grid-template-columns:1fr 1fr}
+  .incident-evidence-info{grid-template-columns:1fr 1fr}
+  .intervention-buttons{grid-template-columns:1fr}
+  .map-panel .leaflet-container{height:260px;min-height:260px}
+  .fleet-footer{flex-direction:column}
+}
+@media(max-width:480px){
+  .fleet-stats,.analytics-grid{grid-template-columns:1fr}
+  .stat-card,.analytics-card{border-right:0}
+  .driver-performance-grid,.prediction-grid,.ai-status-grid,
+  .vehicle-detail-grid,.selected-driver-metrics,.incident-evidence-info{grid-template-columns:1fr}
+  .detail-item,.selected-driver-metrics>div{border-left:0;padding-left:0}
+}/* =========================================================
+   FINAL INCIDENT EVIDENCE FIX
+   ========================================================= */
+
+.critical-evidence-panel,
+.evidence-panel.critical-evidence-panel {
+  width: min(1320px, calc(100% - 56px)) !important;
+  max-width: 1320px !important;
+  min-width: 0 !important;
+
+  margin: 26px auto 0 !important;
+  padding: 18px 20px !important;
+
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+
+  background: #ffffff !important;
+  color: #172033 !important;
+
+  border: 1px solid #e4e9f0 !important;
+  border-radius: 12px !important;
+
+  box-shadow: 0 6px 22px rgba(20, 32, 50, 0.055) !important;
+
+  overflow: hidden !important;
+}
+
+/* Evidence heading */
+
+.critical-evidence-panel .panel-header {
+  width: 100% !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+
+  margin: 0 !important;
+  padding: 0 0 12px !important;
+
+  border-bottom: 1px solid #e8edf3 !important;
+}
+
+.critical-evidence-panel .panel-header h2 {
+  margin: 0 !important;
+
+  color: #172033 !important;
+
+  font-size: 16px !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+}
+
+.critical-evidence-panel .panel-header p {
+  margin: 5px 0 0 !important;
+
+  color: #718096 !important;
+
+  font-size: 9px !important;
+}
+
+/* Critical badge */
+
+.critical-evidence-panel .critical-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+
+  padding: 5px 9px !important;
+
+  background: #fff0f1 !important;
+  color: #d94b55 !important;
+
+  border: 1px solid #f2d0d3 !important;
+  border-radius: 999px !important;
+
+  font-size: 8px !important;
+  font-weight: 800 !important;
+}
+
+/* =========================================================
+   EVIDENCE INFORMATION ROW
+   ========================================================= */
+
+.critical-evidence-panel .incident-evidence-info {
+  width: 100% !important;
+  max-width: 100% !important;
+
+  display: grid !important;
+
+  grid-template-columns:
+    minmax(0, 1.25fr)
+    repeat(4, minmax(0, 1fr)) !important;
+
+  gap: 8px !important;
+
+  margin: 14px 0 0 !important;
+  padding: 0 !important;
+
+  overflow: hidden !important;
+}
+
+.critical-evidence-panel .evidence-info-card {
+  min-width: 0 !important;
+  width: 100% !important;
+
+  min-height: 62px !important;
+
+  padding: 10px 11px !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+
+  background: #f8fafc !important;
+
+  color: #172033 !important;
+
+  border: 1px solid #e4e9f0 !important;
+  border-radius: 8px !important;
+
+  overflow: hidden !important;
+}
+
+.critical-evidence-panel .evidence-info-card span {
+  display: block !important;
+
+  margin: 0 !important;
+
+  color: #718096 !important;
+
+  font-size: 7px !important;
+  font-weight: 750 !important;
+
+  letter-spacing: 0.07em !important;
+}
+
+.critical-evidence-panel .evidence-info-card strong {
+  display: block !important;
+
+  margin-top: 5px !important;
+
+  color: #263246 !important;
+
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+  font-weight: 700 !important;
+
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+/* =========================================================
+   DRIVER CAMERA EVIDENCE
+   ========================================================= */
+
+.critical-evidence-panel .driver-camera-info {
+  width: 100% !important;
+
+  margin: 15px 0 8px !important;
+  padding: 0 !important;
+
+  text-align: left !important;
+}
+
+.critical-evidence-panel .driver-camera-info strong {
+  display: block !important;
+
+  margin: 0 !important;
+
+  color: #263246 !important;
+
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+
+.critical-evidence-panel .driver-camera-info span {
+  display: block !important;
+
+  margin-top: 3px !important;
+
+  color: #718096 !important;
+
+  font-size: 8px !important;
+}
+
+/* =========================================================
+   CAMERA CONTAINER
+   ========================================================= */
+
+.critical-evidence-panel .remote-driver-camera {
+  width: 100% !important;
+
+  min-height: 0 !important;
+  height: 205px !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  position: relative !important;
+
+  overflow: hidden !important;
+
+  background: #eef2f6 !important;
+
+  border: 1px solid #e1e7ee !important;
+  border-radius: 9px !important;
+
+  box-shadow: none !important;
+}
+
+.critical-evidence-panel .remote-driver-video {
+  width: 100% !important;
+  height: 205px !important;
+  min-height: 0 !important;
+
+  display: block !important;
+
+  object-fit: cover !important;
+
+  background: #eef2f6 !important;
+}
+
+/* Camera waiting/error state */
+
+.critical-evidence-panel .remote-driver-camera > div {
+  max-width: 100% !important;
+}
+
+/* =========================================================
+   CLOSE BUTTON
+   ========================================================= */
+
+.critical-evidence-panel .close-evidence-button {
+  margin-top: 10px !important;
+
+  min-height: 32px !important;
+
+  padding: 0 12px !important;
+
+  border: 1px solid #dce3eb !important;
+  border-radius: 7px !important;
+
+  background: #ffffff !important;
+  color: #475569 !important;
+
+  font-size: 8px !important;
+  font-weight: 700 !important;
+
+  cursor: pointer !important;
+}
+
+.critical-evidence-panel .close-evidence-button:hover {
+  background: #f7f9fc !important;
+}
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .critical-evidence-panel .incident-evidence-info {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .critical-evidence-panel .remote-driver-camera,
+  .critical-evidence-panel .remote-driver-video {
+    height: 190px !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .critical-evidence-panel,
+  .evidence-panel.critical-evidence-panel {
+    width: calc(100% - 24px) !important;
+
+    padding: 14px !important;
+  }
+
+  .critical-evidence-panel .incident-evidence-info {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .critical-evidence-panel .remote-driver-camera,
+  .critical-evidence-panel .remote-driver-video {
+    height: 180px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .critical-evidence-panel .incident-evidence-info {
+    grid-template-columns: 1fr !important;
+  }
+}
