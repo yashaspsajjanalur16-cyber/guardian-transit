@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-const SIGNALING_SERVER = "ws://localhost:8080";
+const SIGNALING_SERVER = "wss://guardian-transit.onrender.com";
 
 let adminSocket = null;
 

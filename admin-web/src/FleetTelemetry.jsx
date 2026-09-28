@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-const SIGNALING_SERVER = "ws://localhost:8080";
+const SIGNALING_SERVER = "wss://guardian-transit.onrender.com";
 
 function FleetTelemetry({ onTelemetry }) {
   const socketRef = useRef(null);
