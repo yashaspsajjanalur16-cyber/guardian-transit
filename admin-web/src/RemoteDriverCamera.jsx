@@ -40,21 +40,20 @@ function RemoteDriverCamera({
   vehicleId = "BUS-101",
 }) {
   const videoRef = useRef(null);
-
   const peerRef = useRef(null);
   const socketRef = useRef(null);
 
-  // ICE candidates can arrive before the remote description.
   const pendingIceCandidatesRef = useRef([]);
 
-  // Prevent duplicate offers from creating multiple peers.
   const activeOfferRef = useRef(null);
 
-  // Track whether remote description has been accepted.
   const remoteDescriptionReadyRef = useRef(false);
 
-  // Track mounted state.
   const mountedRef = useRef(true);
+
+  const adminReadySentRef = useRef(false);
+
+  const offerProcessingRef = useRef(false);
 
   const [status, setStatus] = useState("CONNECTING");
   const [captureStatus, setCaptureStatus] = useState("");
@@ -111,6 +110,7 @@ function RemoteDriverCamera({
             retryCapture,
             500
           );
+
           return;
         }
 
@@ -159,7 +159,6 @@ function RemoteDriverCamera({
         );
       }
 
-      // Draw current remote camera frame.
       context.drawImage(
         video,
         0,
@@ -185,7 +184,6 @@ function RemoteDriverCamera({
         "Evidence captured successfully"
       );
 
-      // Send evidence to FleetDashboard.
       window.dispatchEvent(
         new CustomEvent(
           "DRIVER_EVIDENCE_CAPTURED",
@@ -206,6 +204,7 @@ function RemoteDriverCamera({
           setCaptureStatus("");
         }
       }, 3000);
+
     } catch (error) {
       console.error(
         "❌ Evidence capture failed:",
@@ -233,7 +232,7 @@ function RemoteDriverCamera({
   };
 
   // =====================================================
-  // LISTEN FOR AUTOMATIC EVIDENCE REQUEST
+  // AUTOMATIC EVIDENCE REQUEST
   // =====================================================
 
   useEffect(() => {
@@ -263,26 +262,26 @@ function RemoteDriverCamera({
 
     mountedRef.current = true;
 
-    // -----------------------------------------------------
+    adminReadySentRef.current = false;
+    offerProcessingRef.current = false;
+
+    // ===================================================
     // CLEANUP PEER
-    // -----------------------------------------------------
+    // ===================================================
 
     const cleanupPeer = () => {
-      remoteDescriptionReadyRef.current =
-        false;
-
+      remoteDescriptionReadyRef.current = false;
       pendingIceCandidatesRef.current = [];
-
       activeOfferRef.current = null;
+      offerProcessingRef.current = false;
 
       if (peerRef.current) {
         try {
           peerRef.current.ontrack = null;
           peerRef.current.onicecandidate = null;
-          peerRef.current.onconnectionstatechange =
-            null;
-          peerRef.current.oniceconnectionstatechange =
-            null;
+          peerRef.current.onconnectionstatechange = null;
+          peerRef.current.oniceconnectionstatechange = null;
+
           peerRef.current.close();
         } catch (error) {
           console.warn(
@@ -298,16 +297,54 @@ function RemoteDriverCamera({
         try {
           videoRef.current.pause();
         } catch {
-          // Ignore pause errors.
+          // Ignore
         }
 
         videoRef.current.srcObject = null;
       }
     };
 
-    // -----------------------------------------------------
+    // ===================================================
+    // SEND ADMIN READY ONCE
+    // ===================================================
+
+    const sendAdminReady = (socket) => {
+      if (
+        !mounted ||
+        socket.readyState !== WebSocket.OPEN
+      ) {
+        return;
+      }
+
+      if (adminReadySentRef.current) {
+        console.log(
+          "⚠️ ADMIN_READY already sent - ignoring duplicate"
+        );
+
+        return;
+      }
+
+      adminReadySentRef.current = true;
+
+      socket.send(
+        JSON.stringify({
+          type: "ADMIN_READY",
+          vehicle: vehicleId,
+        })
+      );
+
+      console.log(
+        "📤 ADMIN_READY sent:",
+        {
+          type: "ADMIN_READY",
+          vehicle: vehicleId,
+        }
+      );
+    };
+
+    // ===================================================
     // FLUSH QUEUED ICE
-    // -----------------------------------------------------
+    // ===================================================
 
     const flushPendingIceCandidates =
       async (peer) => {
@@ -342,9 +379,9 @@ function RemoteDriverCamera({
         }
       };
 
-    // -----------------------------------------------------
-    // CONNECT
-    // -----------------------------------------------------
+    // ===================================================
+    // CONNECT TO SIGNALING SERVER
+    // ===================================================
 
     const connectToDriver = async () => {
       try {
@@ -373,20 +410,13 @@ function RemoteDriverCamera({
             "✅ Admin connected to signaling server"
           );
 
-          socket.send(
-            JSON.stringify({
-              type: "ADMIN_READY",
-              vehicle: vehicleId,
-            })
-          );
-
-          console.log(
-            "📤 ADMIN_READY sent"
-          );
-
           setStatus(
             "WAITING FOR DRIVER"
           );
+
+          // IMPORTANT:
+          // Send ADMIN_READY exactly once.
+          sendAdminReady(socket);
         };
 
         // =================================================
@@ -425,23 +455,13 @@ function RemoteDriverCamera({
                 "DRIVER READY"
               );
 
-              if (
-                socket.readyState ===
-                WebSocket.OPEN
-              ) {
-                socket.send(
-                  JSON.stringify({
-                    type: "ADMIN_READY",
-                    vehicle:
-                      data.vehicle ||
-                      vehicleId,
-                  })
-                );
-
-                console.log(
-                  "📤 ADMIN_READY sent again"
-                );
-              }
+              // DO NOT send ADMIN_READY again.
+              //
+              // The previous version did this here,
+              // causing duplicate ADMIN_READY messages.
+              //
+              // The original ADMIN_READY sent on socket
+              // open is sufficient.
 
               return;
             }
@@ -464,13 +484,12 @@ function RemoteDriverCamera({
                 );
 
               // -------------------------------------------
-              // IGNORE DUPLICATE OFFER
+              // DUPLICATE OFFER
               // -------------------------------------------
 
               if (
                 activeOfferRef.current ===
-                  offerId &&
-                peerRef.current
+                  offerId
               ) {
                 console.log(
                   "⚠️ Duplicate OFFER ignored"
@@ -478,6 +497,19 @@ function RemoteDriverCamera({
 
                 return;
               }
+
+              // Prevent simultaneous OFFER processing.
+              if (
+                offerProcessingRef.current
+              ) {
+                console.log(
+                  "⚠️ WebRTC OFFER already being processed"
+                );
+
+                return;
+              }
+
+              offerProcessingRef.current = true;
 
               activeOfferRef.current =
                 offerId;
@@ -494,7 +526,7 @@ function RemoteDriverCamera({
                 try {
                   peerRef.current.close();
                 } catch {
-                  // Ignore cleanup error.
+                  // Ignore
                 }
 
                 peerRef.current = null;
@@ -507,7 +539,7 @@ function RemoteDriverCamera({
                 [];
 
               // -------------------------------------------
-              // CREATE NEW PEER
+              // CREATE PEER
               // -------------------------------------------
 
               const peer =
@@ -520,8 +552,7 @@ function RemoteDriverCamera({
                   ],
                 });
 
-              peerRef.current =
-                peer;
+              peerRef.current = peer;
 
               console.log(
                 "🆕 New Admin RTCPeerConnection created"
@@ -550,7 +581,6 @@ function RemoteDriverCamera({
                 const remoteStream =
                   event.streams[0];
 
-                // Prevent unnecessary srcObject replacement.
                 if (
                   video.srcObject !==
                   remoteStream
@@ -559,7 +589,6 @@ function RemoteDriverCamera({
                     remoteStream;
                 }
 
-                // Wait for actual video metadata.
                 const markVideoReady =
                   () => {
                     if (!mounted) {
@@ -580,12 +609,6 @@ function RemoteDriverCamera({
                     }
                   };
 
-                if (
-                  video.readyState >= 1
-                ) {
-                  markVideoReady();
-                }
-
                 video.onloadedmetadata =
                   () => {
                     console.log(
@@ -600,6 +623,8 @@ function RemoteDriverCamera({
                         console.log(
                           "▶️ Remote driver video playing"
                         );
+
+                        markVideoReady();
                       })
                       .catch((error) => {
                         console.log(
@@ -627,7 +652,7 @@ function RemoteDriverCamera({
               };
 
               // =========================================
-              // ADMIN ICE CANDIDATES
+              // ADMIN ICE
               // =========================================
 
               peer.onicecandidate =
@@ -692,23 +717,13 @@ function RemoteDriverCamera({
 
                   if (
                     peer.iceConnectionState ===
-                    "connected" ||
+                      "connected" ||
                     peer.iceConnectionState ===
-                    "completed"
+                      "completed"
                   ) {
                     console.log(
                       "✅ Admin ICE connection established"
                     );
-
-                    if (
-                      videoRef.current &&
-                      videoRef.current
-                        .videoWidth
-                    ) {
-                      setStatus(
-                        "LIVE"
-                      );
-                    }
                   }
 
                   if (
@@ -764,16 +779,9 @@ function RemoteDriverCamera({
 
                   if (
                     peer.connectionState ===
-                    "new"
-                  ) {
-                    setStatus(
-                      "CONNECTING"
-                    );
-                  }
-
-                  if (
+                      "new" ||
                     peer.connectionState ===
-                    "connecting"
+                      "connecting"
                   ) {
                     setStatus(
                       "CONNECTING"
@@ -790,8 +798,7 @@ function RemoteDriverCamera({
 
                     if (
                       videoRef.current &&
-                      videoRef.current
-                        .videoWidth
+                      videoRef.current.videoWidth
                     ) {
                       setStatus(
                         "LIVE"
@@ -839,63 +846,79 @@ function RemoteDriverCamera({
               // ACCEPT OFFER
               // =========================================
 
-              await peer.setRemoteDescription(
-                new RTCSessionDescription(
-                  data.offer
-                )
-              );
-
-              console.log(
-                "✅ Driver offer accepted"
-              );
-
-              // IMPORTANT:
-              // ICE candidates received before this point
-              // are now safe to add.
-              remoteDescriptionReadyRef.current =
-                true;
-
-              await flushPendingIceCandidates(
-                peer
-              );
-
-              // =========================================
-              // CREATE ANSWER
-              // =========================================
-
-              const answer =
-                await peer.createAnswer();
-
-              await peer.setLocalDescription(
-                answer
-              );
-
-              console.log(
-                "✅ Admin local description created"
-              );
-
-              // =========================================
-              // SEND ANSWER
-              // =========================================
-
-              if (
-                socket.readyState ===
-                WebSocket.OPEN
-              ) {
-                socket.send(
-                  JSON.stringify({
-                    type: "ANSWER",
-                    answer:
-                      peer.localDescription,
-                    vehicle:
-                      data.vehicle ||
-                      vehicleId,
-                  })
+              try {
+                await peer.setRemoteDescription(
+                  new RTCSessionDescription(
+                    data.offer
+                  )
                 );
 
                 console.log(
-                  "📤 ANSWER sent to Driver"
+                  "✅ Driver offer accepted"
                 );
+
+                remoteDescriptionReadyRef.current =
+                  true;
+
+                // =======================================
+                // ADD QUEUED DRIVER ICE
+                // =======================================
+
+                await flushPendingIceCandidates(
+                  peer
+                );
+
+                // =======================================
+                // CREATE ANSWER
+                // =======================================
+
+                const answer =
+                  await peer.createAnswer();
+
+                await peer.setLocalDescription(
+                  answer
+                );
+
+                console.log(
+                  "✅ Admin local description created"
+                );
+
+                // =======================================
+                // SEND ANSWER
+                // =======================================
+
+                if (
+                  socket.readyState ===
+                  WebSocket.OPEN
+                ) {
+                  socket.send(
+                    JSON.stringify({
+                      type:
+                        "ANSWER",
+                      answer:
+                        peer.localDescription,
+                      vehicle:
+                        data.vehicle ||
+                        vehicleId,
+                    })
+                  );
+
+                  console.log(
+                    "📤 ANSWER sent to Driver"
+                  );
+                }
+              } catch (error) {
+                console.error(
+                  "❌ Failed to process Driver OFFER:",
+                  error
+                );
+
+                setStatus(
+                  "CONNECTION FAILED"
+                );
+              } finally {
+                offerProcessingRef.current =
+                  false;
               }
 
               return;
@@ -920,10 +943,6 @@ function RemoteDriverCamera({
 
                 return;
               }
-
-              // -------------------------------------------
-              // QUEUE ICE UNTIL REMOTE DESCRIPTION EXISTS
-              // -------------------------------------------
 
               if (
                 !remoteDescriptionReadyRef.current
@@ -973,6 +992,7 @@ function RemoteDriverCamera({
 
               return;
             }
+
           } catch (error) {
             console.error(
               "❌ Admin WebRTC message error:",
@@ -1019,6 +1039,7 @@ function RemoteDriverCamera({
             );
           }
         };
+
       } catch (error) {
         console.error(
           "❌ Remote camera error:",
@@ -1053,11 +1074,17 @@ function RemoteDriverCamera({
 
       activeOfferRef.current = null;
 
+      offerProcessingRef.current =
+        false;
+
+      adminReadySentRef.current =
+        false;
+
       if (peerRef.current) {
         try {
           peerRef.current.close();
         } catch {
-          // Ignore cleanup errors.
+          // Ignore
         }
 
         peerRef.current = null;
@@ -1067,7 +1094,7 @@ function RemoteDriverCamera({
         try {
           socketRef.current.close();
         } catch {
-          // Ignore cleanup errors.
+          // Ignore
         }
 
         socketRef.current = null;
@@ -1081,7 +1108,7 @@ function RemoteDriverCamera({
         try {
           adminSocket.close();
         } catch {
-          // Ignore cleanup errors.
+          // Ignore
         }
       }
 
@@ -1091,7 +1118,7 @@ function RemoteDriverCamera({
         try {
           videoRef.current.pause();
         } catch {
-          // Ignore pause errors.
+          // Ignore
         }
 
         videoRef.current.srcObject =
@@ -1101,6 +1128,7 @@ function RemoteDriverCamera({
           null;
       }
     };
+
   }, [vehicleId]);
 
   // =====================================================
@@ -1109,7 +1137,9 @@ function RemoteDriverCamera({
 
   return (
     <div className="remote-driver-camera">
+
       <div className="remote-camera-video-wrapper">
+
         <video
           ref={videoRef}
           autoPlay
@@ -1120,6 +1150,7 @@ function RemoteDriverCamera({
 
         {status !== "LIVE" && (
           <div className="remote-camera-overlay">
+
             <div className="remote-camera-icon">
               📹
             </div>
@@ -1173,6 +1204,7 @@ function RemoteDriverCamera({
                 Driver camera disconnected.
               </small>
             )}
+
           </div>
         )}
 
@@ -1181,6 +1213,7 @@ function RemoteDriverCamera({
             ● LIVE DRIVER FEED
           </div>
         )}
+
       </div>
 
       {/* =================================================
@@ -1188,6 +1221,7 @@ function RemoteDriverCamera({
       ================================================= */}
 
       <div className="evidence-controls">
+
         <button
           type="button"
           className="capture-evidence-button"
@@ -1216,7 +1250,9 @@ function RemoteDriverCamera({
             {captureStatus}
           </div>
         )}
+
       </div>
+
     </div>
   );
 }
